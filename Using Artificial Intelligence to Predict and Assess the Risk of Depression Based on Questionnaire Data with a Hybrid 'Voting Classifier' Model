@@ -1,0 +1,62 @@
+# -*- coding: utf-8 -*-
+"""
+پیش‌بینی ریسک ابتلا به افسردگی با استفاده از داده‌های پرسش‌نامه‌ای و مدل ترکیبی Voting Classifier
+"""
+
+# 1. کتابخانه‌های مورد نیاز
+import pandas as pd
+import numpy as np
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.ensemble import VotingClassifier, RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, accuracy_score
+from sklearn.preprocessing import StandardScaler
+
+# 2. بارگذاری داده‌ها (نمونه‌سازی)
+# فرض بر این است که داده‌ها شامل پاسخ‌های پرسش‌نامه‌ای و یک ستون هدف (target: 1 = افسرده، 0 = غیرافسرده) هستند
+# داده‌ها باید قبلاً آماده‌سازی شده باشند
+
+# df = pd.read_csv("depression_data.csv")
+
+# شبیه‌سازی داده‌ی فرضی (در صورت نبود فایل واقعی)
+np.random.seed(42)
+df = pd.DataFrame(np.random.randint(0, 4, size=(1000, 9)), columns=[f'Q{i+1}' for i in range(9)])
+df['target'] = np.random.randint(0, 2, size=1000)
+
+# 3. آماده‌سازی داده‌ها
+X = df.drop('target', axis=1)
+y = df['target']
+
+scaler = StandardScaler()
+X_scaled = scaler.fit_transform(X)
+
+X_train, X_test, y_train, y_test = train_test_split(X_scaled, y, test_size=0.2, random_state=42)
+
+# 4. تعریف مدل‌های پایه
+clf1 = LogisticRegression(random_state=42)
+clf2 = RandomForestClassifier(n_estimators=100, random_state=42)
+clf3 = SVC(kernel='rbf', probability=True, random_state=42)
+
+# 5. تعریف Voting Classifier
+voting_clf = VotingClassifier(estimators=[
+    ('lr', clf1),
+    ('rf', clf2),
+    ('svc', clf3)
+], voting='soft')  # soft voting uses predicted probabilities
+
+# 6. آموزش مدل و ارزیابی
+voting_clf.fit(X_train, y_train)
+y_pred = voting_clf.predict(X_test)
+y_prob = voting_clf.predict_proba(X_test)[:, 1]
+
+# 7. گزارش نتایج
+print("Confusion Matrix:\n", confusion_matrix(y_test, y_pred))
+print("\nClassification Report:\n", classification_report(y_test, y_pred))
+print("Accuracy:", accuracy_score(y_test, y_pred))
+print("ROC-AUC Score:", roc_auc_score(y_test, y_prob))
+
+# 8. مقایسه با مدل‌های تکی (اختیاری)
+for clf, label in zip([clf1, clf2, clf3, voting_clf], ['LogReg', 'RandomForest', 'SVM', 'Voting']):
+    scores = cross_val_score(clf, X_scaled, y, scoring='roc_auc', cv=5)
+    print(f"{label} AUC: {scores.mean():.3f} (+/- {scores.std():.3f})")
